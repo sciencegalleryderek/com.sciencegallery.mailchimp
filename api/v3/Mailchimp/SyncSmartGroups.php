@@ -54,6 +54,7 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
     $mc_lists = new Mailchimp_Lists($mc_client);
 
     $group_contact_cache = new CRM_Contact_BAO_GroupContactCache();
+    	$group_contact_cache->check(implode(',', $group_ids));
   	$group_contact_cache->whereAdd('group_id IN ('.implode(',', $group_ids).')');
   	$group_contact_cache->orderBy('id ASC');
   	$group_contact_cache->find();
