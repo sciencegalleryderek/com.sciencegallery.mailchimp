@@ -414,8 +414,8 @@ function mailchimp_civicrm_enable() {
   $navigation = new CRM_Core_BAO_Navigation();
 
   $params = array(
-    'name' => 'Campaign Monitor',
-    'label' => 'Campaign Monitor',
+    'name' => 'MailChimp Settings',
+    'label' => 'MailChimp Settings',
     'url' => 'civicrm/admin/setting/mailchimp',
     'permission' => 'access CiviCRM',
     'parent_id' => 137,
@@ -425,8 +425,8 @@ function mailchimp_civicrm_enable() {
   $navigation->add($params);
 
   $params = array(
-    'name' => 'Campaign Monitor Sync',
-    'label' => 'Campaign Monitor Sync',
+    'name' => 'MailChimp Sync',
+    'label' => 'MailChimp Sync',
     'url' => 'civicrm/admin/mailchimp/sync',
     'permission' => 'access CiviCRM',
     'parent_id' => 15,
