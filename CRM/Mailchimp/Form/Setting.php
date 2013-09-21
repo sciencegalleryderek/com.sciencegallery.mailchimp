@@ -183,7 +183,7 @@ class CRM_Mailchimp_Form_Setting extends CRM_Core_Form {
       }
 
       if(empty($list_ids[$group->title])){
-     	drupal_set_message('MailChimp List <strong>' . $group->title . '</strong> does not exist, please create in MailChimp', 'error');
+        CRM_Core_Session::setStatus('MailChimp List <strong>' . $group->title . '</strong> does not exist, please create in MailChimp', 'Configuration error', 'error');
       }
       else{
       	//add to group mapping
@@ -234,7 +234,7 @@ class CRM_Mailchimp_Form_Setting extends CRM_Core_Form {
       'group_map'
     );
 
-	drupal_set_message('Settings saved, ' . count($group_map) . ' Group to List mappings saved');
+    CRM_Core_Session::setStatus('Settings saved, ' . count($group_map) . ' Group to List mappings saved');
 
   }
 

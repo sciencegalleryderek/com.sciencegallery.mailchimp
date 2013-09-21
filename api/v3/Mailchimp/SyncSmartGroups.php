@@ -134,7 +134,7 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
   		  			$results = $mc_lists->subscribe( $group_map[$group_id], array('email' => $email), $buffer,'html', false, true, false, false);
   		  		}
   		  		catch (Exception $e) {
-  		  			drupal_set_message($e->getMessage());
+                  CRM_Core_Session::setStatus($e->getMessage(), 'Sync error', 'error');
   		  		}
   	  		}
   	  	}
@@ -148,8 +148,8 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
   	  		  			$results = $mc_lists->unsubscribe( $group_map[$group_id], array('email' => $email), true, false, false);
   	  		  		}
   	  		  		catch (Exception $e) {
-  	  		  			drupal_set_message($e->getMessage());
-  	  		  		}
+                      CRM_Core_Session::setStatus($e->getMessage(), 'Sync error', 'error');
+                    }
   	  	  		}
   	  	  	}
         }
