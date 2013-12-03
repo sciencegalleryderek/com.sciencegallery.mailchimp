@@ -169,7 +169,7 @@ function mailchimp_update_subscription_history($objectId,&$objectRef) {
 }
 
 /**
- * Update Campaign Monitor to Match the new Contact.
+ * Update Mailchimp to Match the new Contact.
  */
 function mailchimp_update_contact($op, $contact_id, $params) {
 

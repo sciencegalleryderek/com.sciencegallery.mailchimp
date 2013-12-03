@@ -99,17 +99,19 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
   			  $history->limit(0, 1);
               $history->find(TRUE);
 
-              $included_emails[$group_contact_cache->group_id][$email->email] = array (
+			  //we want to make sure only the emails that have not opted out and are not on hold are synched
+
+			  if(($contact->is_opt_out == 0) && ($email->on_hold == 0)){
+	              $included_emails[$group_contact_cache->group_id][$email->email] = array (
             	  					'contact_id' => $group_contact_cache->contact_id,
             	  					'first_name' => $contact->first_name,
             	  					'last_name' => $contact->last_name,
             	  					'optin_time'=>$history->date,
             	  					);
-
+				}
 
 
               }
-
 
         //Now get the lists from the mailchimp API
         foreach($group_map as $group_id => $list_id){
