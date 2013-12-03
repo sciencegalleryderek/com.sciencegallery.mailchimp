@@ -22,6 +22,7 @@ function _civicrm_api3_mailchimp_syncsmartgroups_spec(&$spec) {
  * @throws API_Exception
  */
 function civicrm_api3_mailchimp_syncsmartgroups($params) {
+
   // Get the API Key
   	$api_key = mailchimp_variable_get('api_key');
 
@@ -50,11 +51,25 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
 
 	}
 
+
     $mc_client = new Mailchimp($api_key);
     $mc_lists = new Mailchimp_Lists($mc_client);
 
+	//Only want to sync the smart groups
+    $all_groups = new CRM_Contact_BAO_Group();
+    $all_groups->whereAdd('id IN ('.implode(',', $group_ids).')');
+    $all_groups->whereAdd('saved_search_id IS NOT NULL');
+    $all_groups->find();
+
+	//Empty the group ids array so we can populate it only with smart groups
+	$group_ids = array();
+
+    while($all_groups->fetch()){
+    	$group_ids[$all_groups->id] = $all_groups->id;
+    }
+
     $group_contact_cache = new CRM_Contact_BAO_GroupContactCache();
-    	$group_contact_cache->check(implode(',', $group_ids));
+    $group_contact_cache->check(implode(',', $group_ids));
   	$group_contact_cache->whereAdd('group_id IN ('.implode(',', $group_ids).')');
   	$group_contact_cache->orderBy('id ASC');
   	$group_contact_cache->find();
@@ -75,35 +90,47 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
   	          $email = new CRM_Core_BAO_Email();
   	          $email->contact_id = $group_contact_cache->contact_id;
   	          $email->is_primary = TRUE;
-            	  $email->find(TRUE);
+              $email->find(TRUE);
 
-            	  $history = new CRM_Contact_BAO_SubscriptionHistory();
+              $history = new CRM_Contact_BAO_SubscriptionHistory();
   			  $history->group_id = $group_id;
   			  $history->contact_id = $group_contact_cache->contact_id;
   			  $history->orderBy('id DESC');
   			  $history->limit(0, 1);
-            	  $history->find(TRUE);
+              $history->find(TRUE);
 
-            	  $included_emails[$group_contact_cache->group_id][$email->email] = array (
-            	  													'contact_id' => $group_contact_cache->contact_id,
-            	  													'first_name' => $contact->first_name,
-            	  													'last_name' => $contact->last_name,
-            	  													'optin_time'=>$history->date,
-            	  													);
+              $included_emails[$group_contact_cache->group_id][$email->email] = array (
+            	  					'contact_id' => $group_contact_cache->contact_id,
+            	  					'first_name' => $contact->first_name,
+            	  					'last_name' => $contact->last_name,
+            	  					'optin_time'=>$history->date,
+            	  					);
 
 
 
               }
 
+
         //Now get the lists from the mailchimp API
         foreach($group_map as $group_id => $list_id){
-        	$results = $mc_lists->members($list_id, 'subscribed');
-        	foreach($results['data'] as $member) {
-        		$mailchimp_emails[$group_id][$member['email']] = $member['id'];
+        	$listinfo = $mc_lists->getList(array("list_id" => $list_id,));
+
+			$listCount =  $listinfo['data'][0]['stats']['member_count'];
+			$counted = 0;
+			$page = 0;
+
+			while ($counted < $listCount) {
+        		$results = $mc_lists->members($list_id, 'subscribed', array('start'=>$page,));
+
+        		foreach($results['data'] as $member) {
+        			$mailchimp_emails[$group_id][$member['email']] = $member['id'];
+        			$counted += 1;
+        		}
+				$page +=1;
         	}
         }
 
-        //do a comparison and figure out what addresses need to be added
+      //do a comparison and figure out what addresses need to be added
         foreach($included_emails as $group_id => $group_include) {
         	foreach($group_include as $email => $member){
         		if(empty($mailchimp_emails[$group_id][$email])){
@@ -121,8 +148,7 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
   	        	}
   	        }
 
-
-        foreach($additions as $group_id => $group_include) {
+       foreach($additions as $group_id => $group_include) {
         	foreach($group_include as $email => $member) {
         		//add the new subscribers
         		if(!empty($email)){
@@ -140,7 +166,7 @@ function civicrm_api3_mailchimp_syncsmartgroups($params) {
   	  	}
         }
 
-        //remove the old ones
+       //remove the old ones
         foreach($removals as $group_id => $group_include) {
   	        	foreach($group_include as $email => $member) {
   	        		if(!empty($email)){
