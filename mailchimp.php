@@ -146,23 +146,27 @@ function mailchimp_update_subscription_history($objectId,&$objectRef) {
       continue;
     }
 
+    try {
+      // If the Contact is being added, add them to the list.
+      if ($history->status == 'Added') {
+	if (empty($contact->first_name)) $buffer = array( 'EMAIL'=>$email->email, 'groupings'=>array(), 'optin_time'=>$history->date);
+	elseif (empty($contact->last_name)) $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->display_name, 'groupings'=>array(), 'optin_time'=>$history->date);
+	else $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->first_name, 'LNAME'=>$contact->last_name, 'groupings'=>array(), 'optin_time'=>$history->date);
 
-    // If the Contact is being added, add them to the list.
-    if ($history->status == 'Added') {
-      if (empty($contact->first_name)) $buffer = array( 'EMAIL'=>$email->email, 'groupings'=>array(), 'optin_time'=>$history->date);
-	  elseif (empty($contact->last_name)) $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->display_name, 'groupings'=>array(), 'optin_time'=>$history->date);
-	  else $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->first_name, 'LNAME'=>$contact->last_name, 'groupings'=>array(), 'optin_time'=>$history->date);
+	$mc_lists->subscribe( $group_map[$history->group_id], array('email' => $email->email), $buffer,'html', false, true, false, false);
 
-	  $mc_lists->subscribe( $group_map[$history->group_id], array('email' => $email->email), $buffer,'html', false, true, false, false);
-
+      }
+      // If they are being removed, unsubscribe them.
+      elseif ($history->status == 'Removed') {
+	$mc_lists->unsubscribe($group_map[$history->group_id], array('email' => $email->email),false,false,false);
+      }
+      // If they are being permenently deleted, delete them from the list.
+      elseif ($history->status == 'Deleted') {
+	$mc_lists->unsubscribe($group_map[$history->group_id], array('email' => $email->email),true,false,false);
+      }
     }
-    // If they are being removed, unsubscribe them.
-    elseif ($history->status == 'Removed') {
-      $mc_lists->unsubscribe($group_map[$history->group_id], array('email' => $email->email),false,false,false);
-    }
-    // If they are being permenently deleted, delete them from the list.
-    elseif ($history->status == 'Deleted') {
-      $mc_lists->unsubscribe($group_map[$history->group_id], array('email' => $email->email),true,false,false);
+    catch(Exception $e) {
+      CRM_Core_Error::createDebugLogger()->log('Contact ' . $contact->id . ' ' . $history->status . ': ' . $e->getMessage(), PEAR_LOG_EARNING);
     }
   }
 
@@ -191,141 +195,147 @@ function mailchimp_update_contact($op, $contact_id, $params) {
   //Check if we should mess with this user
   foreach ($params['group'] as $group_id => $in_group) {
 
-       if ((!empty($groups[$group_id]) && !empty($group_map[$group_id])) && $in_group) {
+    try {
 
-  		// Get the Contact
-  		$contact = new CRM_Contact_BAO_Contact();
-  		$contact->get('id', $contact_id);
+      if ((!empty($groups[$group_id]) && !empty($group_map[$group_id])) && $in_group) {
 
-  		// Connect to Mail Chimp
-  		$mc_client = new Mailchimp($api_key);
-  		$mc_lists = new Mailchimp_Lists($mc_client);
+	// Get the Contact
+	$contact = new CRM_Contact_BAO_Contact();
+	$contact->get('id', $contact_id);
 
-  		// Get the Contact's Current Primary Email.
-  		$email = new CRM_Core_BAO_Email();
-  		$email->whereAdd('contact_id = '.$contact->id);
-  		$email->whereAdd('is_primary = 1');
-  		$email->find(TRUE);
+	// Connect to Mail Chimp
+	$mc_client = new Mailchimp($api_key);
+	$mc_lists = new Mailchimp_Lists($mc_client);
 
-  		if ($op == 'edit') {
+	// Get the Contact's Current Primary Email.
+	$email = new CRM_Core_BAO_Email();
+	$email->whereAdd('contact_id = '.$contact->id);
+	$email->whereAdd('is_primary = 1');
+	$email->find(TRUE);
 
-    		$primary_email = '';
+	if ($op == 'edit') {
 
-    		// Find the Primary Eamil from the Paramaters.
-    		foreach ($params['email'] as $email_params) {
-      			if (!empty($email_params['is_primary'])) {
-        			$primary_email = $email_params['email'];
-      			}
-    		}
+	  $primary_email = '';
 
-    		// See if the Current Primary Email is different from the submitted value.
-    		if ($email->email != $primary_email) {
+	  // Find the Primary Eamil from the Paramaters.
+	  foreach ($params['email'] as $email_params) {
+	    if (!empty($email_params['is_primary'])) {
+	      $primary_email = $email_params['email'];
+	    }
+	  }
 
-				// Update the List to reflect the new primary email.
-          		// If Both emails are not empty, the email has changed.
-          		if (!empty($email->email) && !empty($primary_email)) {
-					$updates = array('EMAIL' => $primary_email);
-					$mc_lists->updateMember( $group_map[$group_id],array('email'=>$email->email),$updates);
-          		}
-          		// if the Existing email is empty, subscribe the user (only if they are in the group)
-          		elseif ($in_group && empty($email->email) && !empty($primary_email)) {
+	  // See if the Current Primary Email is different from the submitted value.
+	  if ($email->email != $primary_email) {
 
-            		// Create the Paramaters to be Subscribed
-            		$vars = array (
-            		  'EMAIL' => $primary_email,
-            		  'FNAME' => $params['first_name'],
-            		  'LNAME' => $params['last_name'],
-            		  'groupings'=>array(),
-            		  'optin_time'=>date("Y-m-d H:i:s"),
-            		);
+	    // Update the List to reflect the new primary email.
+	    // If Both emails are not empty, the email has changed.
+	    if (!empty($email->email) && !empty($primary_email)) {
+	      $updates = array('EMAIL' => $primary_email);
+	      $mc_lists->updateMember( $group_map[$group_id],array('email'=>$email->email),$updates);
+	    }
+	    // if the Existing email is empty, subscribe the user (only if they are in the group)
+	    elseif ($in_group && empty($email->email) && !empty($primary_email)) {
 
-            		// Add the Subscriber.
-            		$result = $subscribers->add($subscriber);
+	      // Create the Paramaters to be Subscribed
+	      $vars = array (
+                'EMAIL' => $primary_email,
+                'FNAME' => $params['first_name'],
+                'LNAME' => $params['last_name'],
+                'groupings'=>array(),
+                'optin_time'=>date("Y-m-d H:i:s"),
+              );
 
-            		$mc_lists->subscribe( $group_map[$group_id], array('email' => $primary_email), $vars,'html', false, true, false, false);
-	          	}
+	      // Add the Subscriber.
+	      $result = $subscribers->add($subscriber);
 
-	          	// If the exting email is not empty, but the primary email is, then they should be deleted.
-	          	elseif (!empty($email->email) && empty($primary_email)) {
-	            	// Delete the Subscriber.
-	            	$mc_lists->unsubscribe( $group_map[$group_id], array('email' => $primary_email), false, false, false);
-	          	}
-        	}
+	      $mc_lists->subscribe( $group_map[$group_id], array('email' => $primary_email), $vars,'html', false, true, false, false);
+	    }
 
-		//if there's a name change, update mailchimp
-	 	if(($params['first_name'] != $contact->first_name) ||($params['last_name'] != $contact->last_name) ){
-			   	 $updates = array (
-			  		'FNAME' => $params['first_name'],
-			  	 	'LNAME' => $params['last_name'],
-			      	);
+	    // If the exting email is not empty, but the primary email is, then they should be deleted.
+	    elseif (!empty($email->email) && empty($primary_email)) {
+	      // Delete the Subscriber.
+	      $mc_lists->unsubscribe( $group_map[$group_id], array('email' => $primary_email), false, false, false);
+	    }
+	  }
 
-			     $results = $mc_lists->updateMember($group_map[$group_id],array('email'=>$primary_email),$updates);
-	  	}
-      }
+	  //if there's a name change, update mailchimp
+	  if(($params['first_name'] != $contact->first_name) ||($params['last_name'] != $contact->last_name) ){
+	    $updates = array (
+              'FNAME' => $params['first_name'],
+              'LNAME' => $params['last_name'],
+            );
+
+	    $results = $mc_lists->updateMember($group_map[$group_id],array('email'=>$primary_email),$updates);
+	  }
+	}
 
         // If the User is being deleted
-	    elseif ($op == 'delete' && !empty($email->email)) {
+	elseif ($op == 'delete' && !empty($email->email)) {
 
-	      // Loop through all groups that should be synced.
-	      foreach ($groups as $group_id => $sync) {
+	  // Loop through all groups that should be synced.
+	  foreach ($groups as $group_id => $sync) {
 
-	        // If a map exists for said group
-	        if ($sync && !empty($group_map[$group_id])) {
+	    // If a map exists for said group
+	    if ($sync && !empty($group_map[$group_id])) {
 
-	            // Set the List ID
-	           // $subscribers->set_list_id($group_map[$group_id]);
+	      // Set the List ID
+	      // $subscribers->set_list_id($group_map[$group_id]);
 
-	            // If the Contact hasn't been removed yet
-	            if (!empty($contact->is_deleted)) {
-	              // Delete the Subscriber
-	              //$result = $subscribers->delete($email->email);
-	            }
-	            else {
-	              // Remove the Subscriber
-	             // $result = $subscribers->unsubscribe($email->email);
-	            }
-
-	          }
+	      // If the Contact hasn't been removed yet
+	      if (!empty($contact->is_deleted)) {
+		// Delete the Subscriber
+		//$result = $subscribers->delete($email->email);
+	      }
+	      else {
+		// Remove the Subscriber
+		// $result = $subscribers->unsubscribe($email->email);
 	      }
 
 	    }
-	    // If the Contact is being created or restored
-	    elseif (!empty($email->email) && $op == 'restore') {
+	  }
 
-	      // Get all the Groups a Contact was in.
-	      $group_contact = new CRM_Contact_BAO_GroupContact();
-	      $group_contact->whereAdd('contact_id = '.$contact->id);
-	      $group_contact->whereAdd("status = 'Added'");
-	      $group_contact->find();
+	}
+	// If the Contact is being created or restored
+	elseif (!empty($email->email) && $op == 'restore') {
 
-	      // Loop through Each Group.
-	      while ($group_contact->fetch()) {
+	  // Get all the Groups a Contact was in.
+	  $group_contact = new CRM_Contact_BAO_GroupContact();
+	  $group_contact->whereAdd('contact_id = '.$contact->id);
+	  $group_contact->whereAdd("status = 'Added'");
+	  $group_contact->find();
 
-	        // Set the Group ID.
-	        $group_id = $group_contact->group_id;
+	  // Loop through Each Group.
+	  while ($group_contact->fetch()) {
 
-	        // Make sure this group should be synced and it is mapped.
-	        if (!empty($groups[$group_id]) && !empty($group_map[$group_id])) {
+	    // Set the Group ID.
+	    $group_id = $group_contact->group_id;
 
-	          // Set the List ID.
-	         // $subscribers->set_list_id($group_map[$group_id]);
+	    // Make sure this group should be synced and it is mapped.
+	    if (!empty($groups[$group_id]) && !empty($group_map[$group_id])) {
 
-	          $subscriber = array (
-	            'EmailAddress' => $email->email,
-	            'Name' => $contact->display_name,
-	            'Resubscribe' => $contact->do_not_email ? FALSE : TRUE,
-	            'RestartSubscriptionBasedAutoResponders' => FALSE,
-	          );
-	         // $result = $subscribers->add($subscriber);
+	      // Set the List ID.
+	      // $subscribers->set_list_id($group_map[$group_id]);
 
-	        }
+	      $subscriber = array (
+                'EmailAddress' => $email->email,
+                'Name' => $contact->display_name,
+                'Resubscribe' => $contact->do_not_email ? FALSE : TRUE,
+                'RestartSubscriptionBasedAutoResponders' => FALSE,
+              );
+	      // $result = $subscribers->add($subscriber);
 
-	      }
+	    }
 
-  		}
+	  }
+
+	}
+
+      }
 
     }
-
+    catch(Exception $e) {
+      CRM_Core_Error::createDebugLogger()->log('Contact ' . $contact->id . ' ' . $history->status . ': ' . $e->getMessage(), PEAR_LOG_WARNING);
+    }
   }
 
 }
