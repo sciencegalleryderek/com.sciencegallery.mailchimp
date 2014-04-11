@@ -148,7 +148,7 @@ function mailchimp_update_subscription_history($objectId,&$objectRef) {
 
     try {
       // If the Contact is being added, add them to the list.
-      if ($history->status == 'Added') {
+      if ($history->status == 'Added' && !($contact->is_opt_out || $contact->do_not_email || $email->on_hold)) {
 	if (empty($contact->first_name)) $buffer = array( 'EMAIL'=>$email->email, 'groupings'=>array(), 'optin_time'=>$history->date);
 	elseif (empty($contact->last_name)) $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->display_name, 'groupings'=>array(), 'optin_time'=>$history->date);
 	else $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->first_name, 'LNAME'=>$contact->last_name, 'groupings'=>array(), 'optin_time'=>$history->date);
@@ -192,16 +192,34 @@ function mailchimp_update_contact($op, $contact_id, $params) {
   // Get the Groups
   $group_map = mailchimp_variable_get('group_map', array());
 
-  //Check if we should mess with this user
-  foreach ($params['group'] as $group_id => $in_group) {
+  // Get the Contact
+  $contact = new CRM_Contact_BAO_Contact();
+  $contact->get('id', $contact_id);
+
+  $logger = CRM_Core_Error::createDebugLogger();
+
+  if (isset($params['group'])){
+    $contact_groups = $params['group'];
+  }
+  else {
+    $cg_api = civicrm_api3('GroupContact', 'get', array('contact_id' => $contact_id));
+    foreach ($cg_api['values'] as $cg) {
+      $contact_groups[$cg['group_id']] = TRUE;
+    }
+  }
+
+  if(!isset($params['is_opt_out']))
+    $params['is_opt_out'] = $contact->is_opt_out;
+
+  if(!isset($params['privacy']['do_not_email']))
+    $params['privacy']['do_not_email'] = $contact->do_not_email;
+
+  // Check if we should mess with this user
+  foreach ($contact_groups as $group_id => $in_group) {
 
     try {
 
       if ((!empty($groups[$group_id]) && !empty($group_map[$group_id])) && $in_group) {
-
-	// Get the Contact
-	$contact = new CRM_Contact_BAO_Contact();
-	$contact->get('id', $contact_id);
 
 	// Connect to Mail Chimp
 	$mc_client = new Mailchimp($api_key);
@@ -224,17 +242,25 @@ function mailchimp_update_contact($op, $contact_id, $params) {
 	    }
 	  }
 
+	  if(!isset($params['email']))
+	    $primary_email = $email->email;
+
 	  // See if the Current Primary Email is different from the submitted value.
-	  if ($email->email != $primary_email) {
+	  if ($email->email != $primary_email || $params['is_opt_out'] != $contact->is_opt_out ||
+	      $params['privacy']['do_not_email'] != $contact->do_not_email ) {
 
 	    // Update the List to reflect the new primary email.
 	    // If Both emails are not empty, the email has changed.
-	    if (!empty($email->email) && !empty($primary_email)) {
+	    if (!empty($email->email) && !empty($primary_email) &&
+		!($params['is_opt_out'] || $params['privacy']['do_not_email']) &&
+		!($contact->is_opt_out || $contact->do_not_email)) {
 	      $updates = array('EMAIL' => $primary_email);
+
 	      $mc_lists->updateMember( $group_map[$group_id],array('email'=>$email->email),$updates);
 	    }
 	    // if the Existing email is empty, subscribe the user (only if they are in the group)
-	    elseif ($in_group && empty($email->email) && !empty($primary_email)) {
+	    elseif (!empty($primary_email) && empty($email->email) ||
+		    (($contact->is_opt_out || $contact->do_not_email) && !($params['is_opt_out'] || $params['privacy']['do_not_email']))) {
 
 	      // Create the Paramaters to be Subscribed
 	      $vars = array (
@@ -246,20 +272,24 @@ function mailchimp_update_contact($op, $contact_id, $params) {
               );
 
 	      // Add the Subscriber.
-	      $result = $subscribers->add($subscriber);
+	      //¿ $result = $subscribers->add($subscriber); ?
 
 	      $mc_lists->subscribe( $group_map[$group_id], array('email' => $primary_email), $vars,'html', false, true, false, false);
 	    }
-
 	    // If the exting email is not empty, but the primary email is, then they should be deleted.
-	    elseif (!empty($email->email) && empty($primary_email)) {
+	    elseif (!empty($email->email) && empty($primary_email) ||
+		    (!($contact->is_opt_out || $contact->do_not_email) &&
+		     ($params['is_opt_out'] || $params['privacy']['do_not_email']))) {
 	      // Delete the Subscriber.
-	      $mc_lists->unsubscribe( $group_map[$group_id], array('email' => $primary_email), false, false, false);
+	      $mc_lists->unsubscribe( $group_map[$group_id], array('email' => $email->email), false, false, false);
+
+	      continue;
 	    }
 	  }
 
 	  //if there's a name change, update mailchimp
-	  if(($params['first_name'] != $contact->first_name) ||($params['last_name'] != $contact->last_name) ){
+	  if(isset($params['first_name']) && isset($params['last_name']) &&
+	     (($params['first_name'] != $contact->first_name) || ($params['last_name'] != $contact->last_name))){
 	    $updates = array (
               'FNAME' => $params['first_name'],
               'LNAME' => $params['last_name'],
