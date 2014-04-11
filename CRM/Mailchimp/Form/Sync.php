@@ -195,14 +195,7 @@ class CRM_Mailchimp_Form_Sync extends CRM_Core_Form {
           $history->limit($start, 1);
           $history->find(TRUE);
 
-          //file_put_contents($file, print_r($history, true), FILE_APPEND);
-
           $email->contact_id = $group_contact->contact_id;
-
-          $file = '/mnt/hd0/vhosts/mailchimptest.sciencegallery.net/sites/default/files/API.txt';
-          //file_put_contents($file, print_r($group_contact, true), FILE_APPEND);
-          //file_put_contents($file, print_r($contact, true), FILE_APPEND);
-          //file_put_contents($file, print_r($email, true), FILE_APPEND);
 
           if (!empty($email->email)) {
 
@@ -211,7 +204,7 @@ class CRM_Mailchimp_Form_Sync extends CRM_Core_Form {
               $resubscribe = FALSE;
             }
 
-			if($resubscribe){
+	    if($resubscribe && ($contact->is_opt_out == 0) && ($contact->do_not_email) == 0 &&($email->on_hold == 0) ){
 
 			  if (empty($contact->first_name)) $buffer = array( 'EMAIL'=>$email->email, 'groupings'=>array(), 'optin_time'=>$history->date);
 			  elseif (empty($contact->last_name)) $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->display_name, 'groupings'=>array(), 'optin_time'=>$history->date);
