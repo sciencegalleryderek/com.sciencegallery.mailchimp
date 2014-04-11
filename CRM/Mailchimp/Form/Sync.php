@@ -204,7 +204,7 @@ class CRM_Mailchimp_Form_Sync extends CRM_Core_Form {
               $resubscribe = FALSE;
             }
 
-			if($resubscribe && ($contact->is_opt_out == 0) && ($email->on_hold == 0) ){
+	    if($resubscribe && ($contact->is_opt_out == 0) && ($contact->do_not_email) == 0 &&($email->on_hold == 0) ){
 
 			  if (empty($contact->first_name)) $buffer = array( 'EMAIL'=>$email->email, 'groupings'=>array(), 'optin_time'=>$history->date);
 			  elseif (empty($contact->last_name)) $buffer = array( 'EMAIL'=>$email->email, 'FNAME'=>$contact->display_name, 'groupings'=>array(), 'optin_time'=>$history->date);
